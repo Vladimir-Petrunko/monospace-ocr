@@ -1,7 +1,4 @@
-import cv2
+import numpy
 
-import text_grid
-
-img = cv2.imread('inp.png')
-img = text_grid.create_grid(img)
-cv2.imwrite('res.png', img)
+arr = numpy.array([1, 2, 3])
+print(numpy.concat((arr[0:], arr[1:])))

@@ -1,6 +1,6 @@
-import numpy
-
-import utils
+import cv2
+import numpy, utils
+from constants import CHAR_HEIGHT
 
 # This algorithm takes an image with monospace text and creates a grid that aligns itself optimally
 # between symbol borders. It is rather insensitive to garbage data outside the monospace area, as
@@ -8,30 +8,29 @@ import utils
 # given below, so it's possible to tweak them within reasonable margins.
 
 # Accepted symbol widths.
-COL_SPLIT_RANGE = range(5, 25)
+COL_SPLIT_RANGE = range(4, 20)
 # Accepted difference (along all color channels) between 2 pixels for them to be considered 'similar'
 SIMILAR_THRESHOLD = 30
 
-def similar(a, b):
-    cnt = len(a)
+def is_run(row):
+    cnt = len(row) // 2
     for i in range(cnt):
-        if abs(a[i] - b[i]) > SIMILAR_THRESHOLD:
-            return False
-    return True
+        if abs(row[i] - row[i + cnt]) > SIMILAR_THRESHOLD:
+            return 1
+    return 0
 
 # A _run_ is defined as a change in color between 2 consecutive pixels.
 # Note that two colors within SIMILAR_THRESHOLD of each other are considered identical.
 def find_runs(image):
-    horizontal_runs = numpy.zeros(image.shape)
-    vertical_runs = numpy.zeros(image.shape)
-    height = image.shape[0]
-    width = image.shape[1]
-    for i in range(1, height):
-        for j in range(1, width):
-            if not similar(image[i][j], image[i - 1][j]):
-                vertical_runs[i][j] = 1
-            if not similar(image[i][j], image[i][j - 1]):
-                horizontal_runs[i][j] = 1
+    diff_horizontal = numpy.abs(image[:, 1:] - image[:, :-1]).max(axis = 2) > SIMILAR_THRESHOLD
+    diff_vertical = numpy.abs(image[1:] - image[:-1]).max(axis = 2) > SIMILAR_THRESHOLD
+
+    horizontal_runs = numpy.zeros(image.shape[:2], dtype = int)
+    vertical_runs = numpy.zeros(image.shape[:2], dtype = int)
+
+    horizontal_runs[:, 1:][diff_horizontal] = 1
+    vertical_runs[1:][diff_vertical] = 1
+
     return horizontal_runs, vertical_runs
 
 def find_optimal_split(runs_cnt, split_range):
@@ -73,6 +72,8 @@ def find_optimal_split(runs_cnt, split_range):
             if best_split_result is None or best_result < best_split_result:
                 best_split_result = best_result
                 best_splits = splits
+        if best_split_result < 1:
+            return best_splits
         # Generally, if the split width increases, the total run sum decreases (because fewer grid lines can be placed).
         # If it increases and this increase is statistically significant (here > 1.25x), this means that the previous
         # width allowed for a configuration with significantly fewer runs. We declare the first such position our
@@ -83,25 +84,28 @@ def find_optimal_split(runs_cnt, split_range):
         # I believe this multiplier can be decreased +/- safely up to a point, but have not tried it yet.
         if (split - 1) in results_by_index:
             prev_result = results_by_index[split - 1]
-            if prev_result * 1.25 < best_split_result:
-                prev_prev_result = results_by_index[split - 2]
-                if prev_prev_result < prev_result:
+            if prev_result * 1.05 < best_split_result:
+                prev_prev_result = results_by_index.get(split - 2, None)
+                if prev_prev_result is not None and prev_prev_result < prev_result:
                     return splits_by_index[split - 2]
                 return splits_by_index[split - 1]
 
         results_by_index[split] = best_split_result
         splits_by_index[split] = best_splits
 
+        if splits_by_index[split] == 0:
+            return results_by_index[split]
+
     return None
 
 def draw_splits(image, vertical_splits, horizontal_splits, color):
     for split in vertical_splits:
-        image = utils.draw_vertical_line(image, split, color)
+        image[:][split] = color
     for split in horizontal_splits:
-        image = utils.draw_horizontal_line(image, split, color)
+        image[split][:] = color
     return image
 
-def create_grid(image):
+def parse_cells(image):
     image = image.astype(numpy.int16)
     height = image.shape[0]
     width = image.shape[1]
@@ -112,8 +116,23 @@ def create_grid(image):
 
     vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE)
     vertical_split_width = vertical_splits[0] - vertical_splits[1]
-    horizontal_split_range = range(int(vertical_split_width * 1), int(vertical_split_width * 4))
+    horizontal_split_range = range(int(vertical_split_width * 1.8), int(vertical_split_width * 3))
     horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range)
 
-    image = draw_splits(image, vertical_splits, horizontal_splits, (0, 0, 255))
-    return image
+    black_and_white = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    black_and_white = utils.to_black_and_white(black_and_white)
+
+    cells = numpy.array([])
+
+    for i in range(1, len(horizontal_splits)):
+        for j in range(1, len(vertical_splits)):
+            row_l, row_r = vertical_splits[i - 1], vertical_splits[i]
+            col_l, col_r = horizontal_splits[i - 1], horizontal_splits[i]
+            symbol = black_and_white[row_l:(row_r + 1)][col_l:(col_r + 1)]
+            background = utils.get_background_black_and_white(symbol)
+            symbol = utils.get_bounding_box(symbol, background)
+            symbol = cv2.resize(symbol, (CHAR_HEIGHT // 2, CHAR_HEIGHT))
+            symbol = utils.to_black_and_white(symbol)
+            cells = numpy.append(cells, symbol)
+
+    return cells
