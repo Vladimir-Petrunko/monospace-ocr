@@ -10,7 +10,7 @@ from constants import CHAR_HEIGHT
 # Accepted symbol widths.
 COL_SPLIT_RANGE = range(4, 20)
 # Accepted difference (along all color channels) between 2 pixels for them to be considered 'similar'
-SIMILAR_THRESHOLD = 30
+SIMILAR_THRESHOLD = 40
 
 def is_run(row):
     cnt = len(row) // 2
@@ -33,7 +33,7 @@ def find_runs(image):
 
     return horizontal_runs, vertical_runs
 
-def find_optimal_split(runs_cnt, split_range):
+def find_optimal_split(runs_cnt, split_range, split_type):
     sz = len(runs_cnt)
     results_by_index = {}
     splits_by_index = {}
@@ -84,7 +84,8 @@ def find_optimal_split(runs_cnt, split_range):
         # I believe this multiplier can be decreased +/- safely up to a point, but have not tried it yet.
         if (split - 1) in results_by_index:
             prev_result = results_by_index[split - 1]
-            if prev_result * 1.05 < best_split_result:
+            coefficient = 1.1 if split_type == 'vertical' else 3
+            if prev_result * coefficient < best_split_result:
                 prev_prev_result = results_by_index.get(split - 2, None)
                 if prev_prev_result is not None and prev_prev_result < prev_result:
                     return splits_by_index[split - 2]
@@ -100,13 +101,16 @@ def find_optimal_split(runs_cnt, split_range):
 
 def draw_splits(image, vertical_splits, horizontal_splits, color):
     for split in vertical_splits:
-        image[:][split] = color
+        for i in range(image.shape[0]):
+            image[i][split] = color
     for split in horizontal_splits:
-        image[split][:] = color
+        for j in range(image.shape[1]):
+            image[split][j] = color
     return image
 
 def parse_cells(image):
-    image = image.astype(numpy.int16)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = image.astype('int')
     height = image.shape[0]
     width = image.shape[1]
 
@@ -114,25 +118,26 @@ def parse_cells(image):
     vertical_runs_cnt = [numpy.sum(vertical_runs[:, i:(i + 1)]) for i in range(width)]
     horizontal_runs_cnt = [numpy.sum(horizontal_runs[i:(i + 1), :]) for i in range(height)]
 
-    vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE)
+    vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE, 'vertical')
     vertical_split_width = vertical_splits[0] - vertical_splits[1]
     horizontal_split_range = range(int(vertical_split_width * 1.8), int(vertical_split_width * 3))
-    horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range)
+    horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range, 'horizontal')
 
-    black_and_white = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    black_and_white = utils.to_black_and_white(black_and_white)
+    cells = []
+    coordinates = []
 
-    cells = numpy.array([])
+    horizontal_splits = numpy.flip(horizontal_splits)
+    vertical_splits = numpy.flip(vertical_splits)
 
     for i in range(1, len(horizontal_splits)):
         for j in range(1, len(vertical_splits)):
-            row_l, row_r = vertical_splits[i - 1], vertical_splits[i]
-            col_l, col_r = horizontal_splits[i - 1], horizontal_splits[i]
-            symbol = black_and_white[row_l:(row_r + 1)][col_l:(col_r + 1)]
-            background = utils.get_background_black_and_white(symbol)
-            symbol = utils.get_bounding_box(symbol, background)
-            symbol = cv2.resize(symbol, (CHAR_HEIGHT // 2, CHAR_HEIGHT))
-            symbol = utils.to_black_and_white(symbol)
-            cells = numpy.append(cells, symbol)
+            row_l, row_r = vertical_splits[j - 1], vertical_splits[j]
+            col_l, col_r = horizontal_splits[i - 1] + 1, horizontal_splits[i] - 1
+            symbol = gray[col_l:(col_r + 1), row_l:(row_r + 1)]
+            cells.append(symbol)
+            coordinates.append((row_l, row_r, col_l, col_r))
 
-    return cells
+    image = draw_splits(image, vertical_splits, horizontal_splits, color = (0, 0, 255))
+    cv2.imwrite('ll.jpg', image)
+
+    return vertical_splits, horizontal_splits, cells
