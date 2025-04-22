@@ -53,6 +53,6 @@ def detect_regions(image):
                         break
                 if not has_seen:
                     boxes.append((row_l, row_r, col_l, col_r))
-                    image[mask == 1] = 50
+                    image[mask == 1] = 255
     cv2.imwrite('ll.jpg', image)
     return boxes

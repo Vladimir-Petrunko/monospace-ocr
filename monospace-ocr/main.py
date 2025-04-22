@@ -1,4 +1,3 @@
-import numpy
+import ocr, cv2
 
-arr = numpy.array([1, 2, 3])
-print(numpy.concat((arr[0:], arr[1:])))
+ocr.image_to_text(cv2.imread('dode.png'))

@@ -3,6 +3,16 @@ from pathlib import Path
 import cv2
 import numpy
 
+def get_color(arr):
+    return []
+
+def features(cell):
+    bw = to_black_and_white(cell)
+    nz = numpy.nonzero(bw)
+    row_l, row_r = numpy.min(nz[0]), numpy.max(nz[0])
+    col_l, col_r = numpy.min(nz[1]), numpy.max(nz[1])
+    return (row_r - row_l + 1) / (col_r - col_l + 1)
+
 def file_cnt(path):
     path = Path(path)
     return sum(1 for entry in path.iterdir() if entry.is_file())
@@ -36,28 +46,18 @@ def get_background_black_and_white(image):
         return image[0][0]
 
 def get_feature_vector(symbol):
-    height = symbol.shape[0]
-    width = symbol.shape[1]
-    area = height * width
-    black = numpy.nonzero(symbol - 255)
-
-    bounding_box_width = numpy.max(black[1]) - numpy.min(black[1]) + 1
-    bounding_box_height = numpy.max(black[0]) - numpy.min(black[0]) + 1
-    x, y = black[1], black[0]
-    x = x - width / 2
-    x = x / (width / 2)
-    y = y - height / 2
-    y = y / (height / 2)
+    pixels = numpy.nonzero(symbol)
+    row_l, row_r = numpy.min(pixels[0]), numpy.max(pixels[0])
+    col_l, col_r = numpy.min(pixels[1]), numpy.max(pixels[1])
+    height = row_r - row_l + 1
+    width = col_r - col_l + 1
 
     return numpy.array([
-        len(black[0]) / area,
-        bounding_box_width / width,
-        bounding_box_height / height,
-        numpy.mean(x),
-        numpy.mean(y),
-        numpy.mean(x * x),
-        numpy.mean(y * y),
-        numpy.mean(x * y)
+        height / width, # aspect ratio
+        height / symbol.shape[0], # height percentage
+        width / symbol.shape[1], # width percentage
+        numpy.mean(pixels[0]) / symbol.shape[0], # relative vertical center
+        numpy.mean(pixels[1]) / symbol.shape[1], # relative horizontal center
     ])
 
 def train_test_split(arr, partition_size, current_partition):
@@ -67,21 +67,3 @@ def train_test_split(arr, partition_size, current_partition):
     test_split = arr[start:end]
     train_split = numpy.concat((arr[0:start], arr[end:]))
     return train_split, test_split
-
-def area(box):
-    return (box[1] - box[0] + 1) * (box[3] - box[2] + 1)
-
-def intersection_area(box_a, box_b):
-    row_l = max(box_a[0], box_b[0])
-    row_r = min(box_a[1], box_b[1])
-    col_l = max(box_a[2], box_b[2])
-    col_r = min(box_a[3], box_b[3])
-    if row_l > row_r or col_l > col_r:
-        return 0
-    return area((row_l, row_r, col_l, col_r))
-
-def union_area(box_a, box_b):
-    return area(box_a) + area(box_b) - intersection_area(box_a, box_b)
-
-def intersection_over_union(box_a, box_b):
-    return intersection_area(box_a, box_b) / union_area(box_a, box_b)

@@ -9,8 +9,10 @@ FOREGROUNDS = []
 CHARS_PER_LINE = 30
 SPACING = 15
 
-hashes = set()
+hashes = []
 indices = {}
+
+feature_list = []
 
 def get_hash(arr):
     return hash(arr.tobytes())
@@ -37,8 +39,9 @@ def create_missing_subdirectories():
 
 def initialize():
     for i in range(33, 127):
+        hashes.append(set())
         DATASET_CHARACTERS.append(i)
-    for gray in [0, 30, 60, 90]:
+    for gray in [0, 25, 50, 75]:
         FOREGROUNDS.append((gray, gray, gray))
         BACKGROUNDS.append((255 - gray, 255 - gray, 255 - gray))
 
@@ -75,29 +78,29 @@ def split(char_size, char_height, font_str):
                 return
             ordinal = DATASET_CHARACTERS[current]
             symbol = image[i:(i + char_size * 2), j:(j + char_size)]
-            symbol = ocr_model.normalize(symbol, is_grayscale = True, for_model = False)
+            features, _, _, symbol = ocr_model.normalize(symbol, is_grayscale = True, for_model = False, cut = False)
             if symbol is not None:
                 hsh = get_hash(symbol)
-                if hsh not in hashes:
-                    hashes.add(hsh)
+                features = numpy.append(features, ordinal)
+                feature_list.append(features)
+                if hsh not in hashes[ordinal - 33]:
+                    hashes[ordinal - 33].add(hsh)
                     index = indices['full/' + str(ordinal) + '/' + font_str]
                     cv2.imwrite('dataset/character/full/' + str(ordinal) + '/' + font_str + '/' + str(index) + '.jpg', symbol)
-                    roll = numpy.roll(symbol, 1, axis = 1)
-                    cv2.imwrite('dataset/character/full/' + str(ordinal) + '/' + font_str + '/' + str(index + 1) + '.jpg', roll)
-                    indices['full/' + str(ordinal) + '/' + font_str] = index + 2
+                    indices['full/' + str(ordinal) + '/' + font_str] = index + 1
             current = current + 1
 
 def generate_all():
     fonts = Path('fonts')
     for font in fonts.iterdir():
         font_str = str(font).replace('\\', '/')
-        for char_size in (8, 9, 10, 11, 12, 13, 14, 15, 16):
+        for char_size in (8, 10, 12, 14, 16, 18, 20):
             start = time.time()
             print(font, char_size)
             font_ref = ImageFont.truetype(font_str, char_size * 2)
             for background in BACKGROUNDS:
                 for foreground in FOREGROUNDS:
-                    for quality in [30, 60, 90]:
+                    for quality in [20, 40, 60, 90]:
                         generate(font_ref, font_str.replace('fonts/', ''), char_size, (char_size + SPACING) * 2, background, foreground, quality)
             end = time.time()
             print('Time taken:', end - start, 's')
@@ -105,3 +108,6 @@ def generate_all():
 initialize()
 create_missing_subdirectories()
 generate_all()
+
+# feature_list = numpy.array(feature_list)
+# numpy.savetxt("features.csv", feature_list, delimiter = ',')

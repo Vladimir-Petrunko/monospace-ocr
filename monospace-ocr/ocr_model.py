@@ -1,6 +1,5 @@
 import math
 import time
-
 import cv2
 import itertools
 import json
@@ -21,6 +20,12 @@ LABEL_TO_CHARACTER = {}
 initialized = {'mappings': False, 'models': False}
 
 character_models = {}
+
+def adjust(x):
+    if x < 75:
+        return x
+    else:
+        return int(max(255, x * 1.25))
 
 def initialize_mappings():
     global initialized
@@ -87,84 +92,90 @@ def get_character_connected_components(cnt, character_counts, character_errors):
         result.append(current_component)
     return result
 
-def connected(cell):
-    for i in range(cell.shape[0]):
-        if cell[i][0] == cell[i][1] == 1:
-            return True
-    return False
+def normalize(cell, is_grayscale, for_model, cut = True):
+    if cell.shape[0] * cell.shape[1] == 0:
+        return None, None, None, None
+    cell = cell.astype('uint8')
 
-def cut(cell):
-    cell = cell / 255
-    cell = 1 - cell
+    orig = cell.copy()
 
-    if numpy.sum(cell[:, :1]) > numpy.sum(cell[:, 1:2]) and not connected(cell[:, :2]):
-        cell = cell[:, 1:]
-    if numpy.sum(cell[:, -1:]) > numpy.sum(cell[:, -2:-1]) and not connected(cell[:, -2:]):
-        cell = cell[:, :-1]
+    if not is_grayscale:
+        bw_cell = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
+    else:
+        bw_cell = cell
 
-    cell = 1 - cell
-    cell = cell * 255
-    return cell
+    if utils.get_background_black_and_white(utils.to_black_and_white(bw_cell)) == 255:
+        bw_cell = 255 - bw_cell
 
-def flood_adjust(cell):
+    min_color, max_color = numpy.min(bw_cell), numpy.max(bw_cell)
+    bw_cell = bw_cell - min_color
+    bw_cell = bw_cell * (255 / (max_color - min_color))
+    bw_cell[bw_cell > 255] = 255
+
+    bw_cell = bw_cell.astype('uint8')
+
+    bw_cell = utils.to_black_and_white(bw_cell)
+
+    backgrounds = []
     for i in range(cell.shape[0]):
         for j in range(cell.shape[1]):
-            if cell[i][j] == 0:
-                mask = flood(cell, (i, j))
-                if len(numpy.nonzero(mask)[0]) <= 2:
-                    cell[mask == 1] = 255
-    return cell
+            if bw_cell[i][j] == 0:
+                backgrounds.append(orig[i][j])
 
-def normalize(cell, is_grayscale, for_model = False):
-    if not is_grayscale:
-        cell = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
+    if cut:
+        for i in range(cell.shape[0]):
+            for j in range(cell.shape[1]):
+                if cell.shape[0] / 3 <= i <= cell.shape[0] * 2 / 3 or cell.shape[1] / 3 <= i <= cell.shape[1] * 2 / 3:
+                    continue
+                if numpy.sum(bw_cell[i, :]) >= 255 * (cell.shape[1] - 1):
+                    bw_cell[i, :] = 0
+                if numpy.sum(bw_cell[:, j]) >= 255 * (cell.shape[0] - 1):
+                    bw_cell[:, j] = 0
 
-    black_and_white = utils.to_black_and_white(cell)
-    if utils.get_background_black_and_white(black_and_white) == 0:
-        cell = 255 - cell
+    mask = numpy.zeros(bw_cell.shape)
+    for i in range(1, cell.shape[0] - 1):
+        for j in range(1, cell.shape[1] - 1):
+            if bw_cell[i][j] == 255 and mask[i][j] == 0:
+                res = flood(bw_cell, (i, j))
+                mask = numpy.logical_or(mask, res)
+    mask[1:(cell.shape[0] - 1), 1:(cell.shape[1] - 1)] = 1
 
-    cell = 255 - cell
-    flat = cell.flatten()
-    min_color, max_color = numpy.min(flat), numpy.max(flat)
-    if min_color == max_color:
-        return None
-    cell = cell - min_color
-    cell = cell * (255 / (max_color - min_color)) * 1.25
-    cell[cell > 255] = 255
-    cell = 255 - cell
+    for i in range(0, cell.shape[0]):
+        for j in range(0, cell.shape[1]):
+            if bw_cell[i][j] == 255 and mask[i][j] == 0:
+                bw_cell[i][j] = 0
 
-    cell = cell.astype('uint8')
-    cell = utils.to_black_and_white(cell)
+    foregrounds = []
+    for i in range(cell.shape[0]):
+        for j in range(cell.shape[1]):
+            if bw_cell[i][j] == 255:
+                foregrounds.append(orig[i][j])
 
-    mask = numpy.zeros(cell.shape) + 1
-    for i in range(2, cell.shape[0] - 2):
-        for j in range(2, cell.shape[1] - 2):
-            if cell[i][j] == 0 and mask[i][j] == 1:
-                res = flood(cell, (i, j))
-                mask[res == 1] = 0
+    pixels = numpy.nonzero(bw_cell)
 
-    mask[2:(cell.shape[0] - 2), 2:(cell.shape[1] - 2)] = 0
-    cell[mask == 1] = 255
+    if len(pixels[0]) == 0:
+        return None, utils.get_color(backgrounds), utils.get_color(backgrounds), None
 
-    if utils.is_monochrome(cell):
-        return None
+    features = utils.get_feature_vector(bw_cell)
 
-    nonzero = numpy.nonzero(cell - 255)
-    row_l, row_r = numpy.min(nonzero[0]), numpy.max(nonzero[0])
-    col_l, col_r = numpy.min(nonzero[1]), numpy.max(nonzero[1])
-    cell = cell[row_l:(row_r + 1), col_l:(col_r + 1)]
-    sz = max(row_r - row_l + 1, col_r - col_l + 1)
-    cell = numpy.pad(cell, [(0, sz - (row_r - row_l + 1)), (0, sz - (col_r - col_l + 1))], mode = 'constant', constant_values = 255)
+    row_l, row_r = numpy.min(pixels[0]), numpy.max(pixels[0])
+    col_l, col_r = numpy.min(pixels[1]), numpy.max(pixels[1])
+    bw_cell = bw_cell[row_l:(row_r + 1), col_l:(col_r + 1)]
+    extra_width = bw_cell.shape[1] - bw_cell.shape[0]
+    if extra_width > 0:
+        bw_cell = numpy.pad(bw_cell, [(0, extra_width), (0, 0)])
+    else:
+        bw_cell = numpy.pad(bw_cell, [(0, 0), (0, -extra_width)])
 
-    cell = cv2.resize(cell, (CHAR_HEIGHT // 2, CHAR_HEIGHT // 2))
-    cell = utils.to_black_and_white(cell)
+    bw_cell = cv2.resize(bw_cell, (CHAR_HEIGHT // 2, CHAR_HEIGHT // 2))
+    bw_cell = utils.to_black_and_white(bw_cell)
 
-    cell = numpy.pad(cell, [(1, 1), (1, 1)], mode = 'constant', constant_values = 255)
+    bw_cell = numpy.pad(bw_cell, [(1, 1), (1, 1)])
 
-    if for_model:
-        cell = 1 - (cell / 255)
-
-    return cell
+    return (features,
+            tuple(utils.get_color(backgrounds)),
+            tuple(utils.get_color(foregrounds)),
+            (bw_cell / 255 if for_model else bw_cell))
 
 def get_prediction(vector):
     label = numpy.argsort(vector)[-1]
@@ -174,7 +185,7 @@ def predict(cells):
     initialize_mappings()
     initialize_character_models()
     # Run main model
-    cells = [(numpy.array(list(map(lambda i: i[1], cells))))]
+    cells = [(numpy.array(list(map(lambda i: i[1][3], cells))))]
     result = character_models['main'].predict(cells)
     return list(map(lambda vector: get_prediction(vector), result))
 

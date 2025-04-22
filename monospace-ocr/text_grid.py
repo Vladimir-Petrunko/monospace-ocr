@@ -73,7 +73,7 @@ def find_optimal_split(runs_cnt, split_range, split_type):
                 best_split_result = best_result
                 best_splits = splits
         if best_split_result < 1:
-            return best_splits
+            return split, best_splits
         # Generally, if the split width increases, the total run sum decreases (because fewer grid lines can be placed).
         # If it increases and this increase is statistically significant (here > 1.25x), this means that the previous
         # width allowed for a configuration with significantly fewer runs. We declare the first such position our
@@ -88,14 +88,14 @@ def find_optimal_split(runs_cnt, split_range, split_type):
             if prev_result * coefficient < best_split_result:
                 prev_prev_result = results_by_index.get(split - 2, None)
                 if prev_prev_result is not None and prev_prev_result < prev_result:
-                    return splits_by_index[split - 2]
-                return splits_by_index[split - 1]
+                    return split - 2, splits_by_index[split - 2]
+                return split - 1, splits_by_index[split - 1]
 
         results_by_index[split] = best_split_result
         splits_by_index[split] = best_splits
 
         if splits_by_index[split] == 0:
-            return results_by_index[split]
+            return split, results_by_index[split]
 
     return None
 
@@ -109,7 +109,6 @@ def draw_splits(image, vertical_splits, horizontal_splits, color):
     return image
 
 def parse_cells(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = image.astype('int')
     height = image.shape[0]
     width = image.shape[1]
@@ -118,10 +117,12 @@ def parse_cells(image):
     vertical_runs_cnt = [numpy.sum(vertical_runs[:, i:(i + 1)]) for i in range(width)]
     horizontal_runs_cnt = [numpy.sum(horizontal_runs[i:(i + 1), :]) for i in range(height)]
 
-    vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE, 'vertical')
+    ver_w, vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE, 'vertical')
+    vertical_splits = numpy.append(vertical_splits, 0)
     vertical_split_width = vertical_splits[0] - vertical_splits[1]
     horizontal_split_range = range(int(vertical_split_width * 1.8), int(vertical_split_width * 3))
-    horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range, 'horizontal')
+    hor_w, horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range, 'horizontal')
+    horizontal_splits = numpy.append(horizontal_splits, 0)
 
     cells = []
     coordinates = []
@@ -129,15 +130,12 @@ def parse_cells(image):
     horizontal_splits = numpy.flip(horizontal_splits)
     vertical_splits = numpy.flip(vertical_splits)
 
-    for i in range(1, len(horizontal_splits)):
-        for j in range(1, len(vertical_splits)):
+    for i in range(0, len(horizontal_splits)):
+        for j in range(0, len(vertical_splits)):
             row_l, row_r = vertical_splits[j - 1], vertical_splits[j]
             col_l, col_r = horizontal_splits[i - 1] + 1, horizontal_splits[i] - 1
-            symbol = gray[col_l:(col_r + 1), row_l:(row_r + 1)]
+            symbol = image[col_l:(col_r + 1), row_l:(row_r + 1)]
             cells.append(symbol)
             coordinates.append((row_l, row_r, col_l, col_r))
 
-    image = draw_splits(image, vertical_splits, horizontal_splits, color = (0, 0, 255))
-    cv2.imwrite('ll.jpg', image)
-
-    return vertical_splits, horizontal_splits, cells
+    return ver_w, hor_w, vertical_splits, horizontal_splits, cells
