@@ -46,7 +46,8 @@ def get_background_black_and_white(image):
         return image[0][0]
 
 def get_feature_vector(symbol):
-    pixels = numpy.nonzero(symbol)
+    black_and_white = to_black_and_white(symbol)
+    pixels = numpy.nonzero(black_and_white)
     row_l, row_r = numpy.min(pixels[0]), numpy.max(pixels[0])
     col_l, col_r = numpy.min(pixels[1]), numpy.max(pixels[1])
     height = row_r - row_l + 1
@@ -54,10 +55,11 @@ def get_feature_vector(symbol):
 
     return numpy.array([
         height / width, # aspect ratio
-        height / symbol.shape[0], # height percentage
-        width / symbol.shape[1], # width percentage
-        numpy.mean(pixels[0]) / symbol.shape[0], # relative vertical center
-        numpy.mean(pixels[1]) / symbol.shape[1], # relative horizontal center
+        height / black_and_white.shape[0], # height percentage
+        width / black_and_white.shape[1], # width percentage
+        numpy.mean(pixels[0]) / black_and_white.shape[0], # relative vertical center
+        numpy.mean(pixels[1]) / black_and_white.shape[1], # relative horizontal center
+        len(pixels[0]) / (height * width) # symbol sparsity
     ])
 
 def train_test_split(arr, partition_size, current_partition):
