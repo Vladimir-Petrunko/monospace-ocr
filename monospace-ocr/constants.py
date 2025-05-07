@@ -1,1 +1,0 @@
-CHAR_HEIGHT = 36

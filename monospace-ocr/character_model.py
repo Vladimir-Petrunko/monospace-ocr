@@ -4,6 +4,7 @@ from keras.src.callbacks import EarlyStopping
 
 import ocr_model
 import tensorflow
+import cv2
 
 from sklearn.neighbors import KNeighborsClassifier
 from numpy import genfromtxt
@@ -48,10 +49,10 @@ def trim(errors, counts):
 
 def create_cnn_model(classes):
     model = models.Sequential()
-    model.add(layers.Input(shape = (20, 20, 1)))
+    model.add(layers.Input(shape = (12, 12, 1)))
+    model.add(layers.Conv2D(64, (3, 3), activation = 'relu'))
     model.add(layers.Conv2D(256, (3, 3), activation = 'relu'))
-    model.add(layers.MaxPooling2D(2, 2))
-    model.add(layers.Conv2D(512, (3, 3), activation = 'relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Flatten())
     model.add(layers.Dense(classes))
     model.summary()
@@ -96,65 +97,18 @@ def get_dataset(characters = None, font_sub = ''):
     shuffle = numpy.random.permutation(len(images))
     return counts, images[shuffle], labels[shuffle]
 
-def create_character_fallback_model(base_path, component, marker, index, level):
-    print(component)
-    new_mapping = {LABEL_TO_CHARACTER[int(label)]: index for index, label in enumerate(component)}
-
-    if not os.path.exists(base_path):
-        os.mkdir(base_path)
-    if not os.path.exists(base_path + '/' + str(index)):
-        os.mkdir(base_path + '/' + str(index))
-    with open(base_path + '/' + str(index) + '/labels.json', 'w') as file:
-        file.write(json.dumps(new_mapping))
-    with open(base_path + '/' + str(index) + '/markers.json', 'w') as file:
-        file.write(json.dumps({'markers': marker}))
-    counts, images, labels = get_dataset(characters = new_mapping, font_sub = 'Consolas')
-
-    cnt = len(new_mapping)
-
-    model = create_cnn_model(cnt)
-    for i in range(3):
-        train_images, test_images = utils.train_test_split(images, DATASET_PARTITIONS, i)
-        train_labels, test_labels = utils.train_test_split(labels, DATASET_PARTITIONS, i)
-        model.fit(train_images, train_labels, epochs = 3, validation_data = (test_images, test_labels))
-    model.fit(images, labels, epochs = 1)
-    model.save(base_path + '/' + str(index) + '/model.keras')
-
-    prediction_errors = get_prediction_errors(model, images, labels, len(new_mapping))
-    print_prediction_errors(len(prediction_errors), prediction_errors)
-
 def create_character_model():
     counts, images, labels = get_dataset()
 
     cnt = len(LABEL_TO_CHARACTER)
     character_model = create_cnn_model(cnt)
 
-    for i in range(3):
-        train_images, test_images = utils.train_test_split(images, DATASET_PARTITIONS, i)
-        train_labels, test_labels = utils.train_test_split(labels, DATASET_PARTITIONS, i)
-        character_model.fit(train_images, train_labels, epochs = 3, validation_data = (test_images, test_labels), callbacks = [early_callback()])
-    character_model.fit(images, labels, epochs = 1)
+    character_model.fit(images, labels, epochs = 3)
 
     character_model.save('model/character/model.keras')
 
     prediction_errors = get_prediction_errors(character_model, images, labels, len(LABEL_TO_CHARACTER))
     print_prediction_errors(len(prediction_errors), prediction_errors)
-
-def create_fallback_models():
-    counts, images, labels = get_dataset(font_sub = 'Consolas')
-
-    character_model = models.load_model('model/character/model.keras')
-
-    predictions_errors = get_prediction_errors(character_model, images, labels, len(LABEL_TO_CHARACTER))
-    predictions_errors = trim(predictions_errors, counts)
-
-    print_prediction_errors(len(LABEL_TO_CHARACTER), predictions_errors)
-
-    markers, components = ocr_model.get_character_connected_components(predictions_errors)
-    print_components(markers, components)
-
-    for i, component in enumerate(components):
-       create_character_fallback_model('model/character/fallback', component, markers[i], i, 0)
 
 ocr_model.initialize_mappings()
 create_character_model()
