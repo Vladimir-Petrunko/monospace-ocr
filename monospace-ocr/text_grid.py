@@ -8,9 +8,9 @@ from constants import CHAR_HEIGHT
 # given below, so it's possible to tweak them within reasonable margins.
 
 # Accepted symbol widths.
-COL_SPLIT_RANGE = range(4, 20)
+COL_SPLIT_RANGE = range(5, 20)
 # Accepted difference (along all color channels) between 2 pixels for them to be considered 'similar'
-SIMILAR_THRESHOLD = 40
+SIMILAR_THRESHOLD = 50
 
 def is_run(row):
     cnt = len(row) // 2
@@ -38,40 +38,36 @@ def find_optimal_split(runs_cnt, split_range, split_type):
     results_by_index = {}
     splits_by_index = {}
     for split in split_range:
-        best_split_result = None
-        best_splits = None
-        for start in range(split):
-            # Given: split width [split] and first index [start], find the optimal placement of grid lines
-            # with distance split +/- 1 of each other, to minimize the total number of _runs_ (see definition
-            # above) across all grid lines.
+        # Given: split width [split], find the optimal placement of grid lines
+        # with distance split +/- 1 of each other, to minimize the total number of _runs_ (see definition
+        # above) across all grid lines.
 
-            # dp_result[i] = best result (sum of total runs) if the last grid line is placed on the i-th index
-            dp_result = [-1 for _ in range(sz)]
-            # dp_prev_index[i] = the previous grid line in such an optimal configuration (see definition of dp_result[i])
-            dp_prev_index = [-1 for _ in range(sz)]
-            for i in range(split):
-                dp_result[i] = runs_cnt[i]
-            for i in range(split, sz):
-                for delta in [-1, 0, 1]:
-                    prev = i - split + delta
-                    if prev < 0:
-                        continue
-                    if dp_result[i] == -1 or dp_result[prev] + runs_cnt[i] < dp_result[i]:
-                        dp_result[i] = dp_result[prev] + runs_cnt[i]
-                        dp_prev_index[i] = prev
-            best_result = dp_result[sz - 1]
-            best_index = sz - 1
-            for i in range(split):
-                if dp_result[sz - i - 1] < best_result:
-                    best_result = dp_result[sz - i - 1]
-                    best_index = sz - i - 1
-            splits = []
-            while best_index != -1:
-                splits.append(best_index)
-                best_index = dp_prev_index[best_index]
-            if best_split_result is None or best_result < best_split_result:
-                best_split_result = best_result
-                best_splits = splits
+        # dp_result[i] = best result (sum of total runs) if the last grid line is placed on the i-th index
+        dp_result = [-1 for _ in range(sz)]
+        # dp_prev_index[i] = the previous grid line in such an optimal configuration (see definition of dp_result[i])
+        dp_prev_index = [-1 for _ in range(sz)]
+        for i in range(split):
+            dp_result[i] = runs_cnt[i]
+        for i in range(split, sz):
+            for delta in [0, 1]:
+                prev = i - split + delta
+                if prev < 0:
+                    continue
+                if dp_result[i] == -1 or dp_result[prev] + runs_cnt[i] < dp_result[i]:
+                    dp_result[i] = dp_result[prev] + runs_cnt[i]
+                    dp_prev_index[i] = prev
+        best_result = dp_result[sz - 1]
+        best_index = sz - 1
+        for i in range(split):
+            if dp_result[sz - i - 1] < best_result:
+                best_result = dp_result[sz - i - 1]
+                best_index = sz - i - 1
+        splits = []
+        while best_index != -1:
+            splits.append(best_index)
+            best_index = dp_prev_index[best_index]
+        best_split_result = best_result
+        best_splits = splits
         if best_split_result < 1:
             return split, best_splits
         # Generally, if the split width increases, the total run sum decreases (because fewer grid lines can be placed).
@@ -100,13 +96,19 @@ def find_optimal_split(runs_cnt, split_range, split_type):
     return None
 
 def draw_splits(image, vertical_splits, horizontal_splits, color):
+    """
+    Debug method that draws splits on the image IN-PLACE.
+    :param image: the input image
+    :param vertical_splits: the coordinates of vertical split lines
+    :param horizontal_splits: the coordinates of horizontal split lines
+    :param color: the color with which the splits are to be drawn
+    """
     for split in vertical_splits:
         for i in range(image.shape[0]):
             image[i][split] = color
     for split in horizontal_splits:
         for j in range(image.shape[1]):
             image[split][j] = color
-    return image
 
 def parse_cells(image):
     image = image.astype('int')
@@ -117,11 +119,11 @@ def parse_cells(image):
     vertical_runs_cnt = [numpy.sum(vertical_runs[:, i:(i + 1)]) for i in range(width)]
     horizontal_runs_cnt = [numpy.sum(horizontal_runs[i:(i + 1), :]) for i in range(height)]
 
-    ver_w, vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE, 'vertical')
+    vertical_size, vertical_splits = find_optimal_split(vertical_runs_cnt, COL_SPLIT_RANGE, 'vertical')
     vertical_splits = numpy.append(vertical_splits, 0)
     vertical_split_width = vertical_splits[0] - vertical_splits[1]
-    horizontal_split_range = range(int(vertical_split_width * 1.8), int(vertical_split_width * 3))
-    hor_w, horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range, 'horizontal')
+    horizontal_split_range = range(int(vertical_split_width * 1.7), int(vertical_split_width * 3))
+    horizontal_size, horizontal_splits = find_optimal_split(horizontal_runs_cnt, horizontal_split_range, 'horizontal')
     horizontal_splits = numpy.append(horizontal_splits, 0)
 
     cells = []
@@ -130,12 +132,17 @@ def parse_cells(image):
     horizontal_splits = numpy.flip(horizontal_splits)
     vertical_splits = numpy.flip(vertical_splits)
 
-    for i in range(0, len(horizontal_splits)):
-        for j in range(0, len(vertical_splits)):
+    if abs((horizontal_splits[1] - horizontal_splits[0]) - horizontal_size) > 1:
+        horizontal_splits = horizontal_splits[1:]
+    if abs((vertical_splits[1] - vertical_splits[0]) - vertical_size) > 1:
+        vertical_splits = vertical_splits[1:]
+
+    for i in range(1, len(horizontal_splits)):
+        for j in range(1, len(vertical_splits)):
             row_l, row_r = vertical_splits[j - 1], vertical_splits[j]
             col_l, col_r = horizontal_splits[i - 1] + 1, horizontal_splits[i] - 1
             symbol = image[col_l:(col_r + 1), row_l:(row_r + 1)]
             cells.append(symbol)
             coordinates.append((row_l, row_r, col_l, col_r))
 
-    return ver_w, hor_w, vertical_splits, horizontal_splits, cells
+    return vertical_size, horizontal_size, vertical_splits, horizontal_splits, cells

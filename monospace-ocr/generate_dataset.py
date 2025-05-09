@@ -48,7 +48,7 @@ def initialize():
             hashes[trimmed].append(set())
     for i in range(33, 127):
         DATASET_CHARACTERS.append(i)
-    for gray in [0, 20, 40, 60, 80]:
+    for gray in [0, 30]:
         FOREGROUNDS.append((gray, gray, gray))
         BACKGROUNDS.append((255 - gray, 255 - gray, 255 - gray))
 
@@ -62,7 +62,7 @@ def generate(font_ref, font_str, char_size, char_height, background, foreground,
     cnt_written = 0
     x, y = 0, 0
     for i in DATASET_CHARACTERS:
-        draw.text((x, y), chr(i), fill = foreground, font = font_ref)
+        draw.text((x + 1, y + 1), chr(i), fill = foreground, font = font_ref)
         cnt_written = cnt_written + 1
         if cnt_written % CHARS_PER_LINE == 0:
             x = 0
@@ -85,8 +85,8 @@ def split(char_size, char_height, font_str):
             if current == len(DATASET_CHARACTERS):
                 return
             ordinal = DATASET_CHARACTERS[current]
-            symbol = image[i:(i + char_size * 2), j:(j + char_size)]
-            features, _, _, symbol = ocr_model.normalize(symbol, is_grayscale = True, for_model = False, cut = False)
+            symbol = image[i:(i + char_size * 2 + 2), j:(j + char_size + 2)]
+            features, _, _, symbol = utils.normalize(symbol, is_grayscale = True, for_model = False)
             if symbol is not None:
                 hsh = get_hash(symbol)
                 features = numpy.append(features, ordinal)
@@ -102,13 +102,13 @@ def generate_all():
     fonts = Path('fonts')
     for font in fonts.iterdir():
         font_str = str(font).replace('\\', '/')
-        for char_size in (6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20):
+        for char_size in (6, 7, 8, 9, 10, 12):
             start = time.time()
             print(font, char_size)
             font_ref = ImageFont.truetype(font_str, char_size * 2)
             for background in BACKGROUNDS:
                 for foreground in FOREGROUNDS:
-                    for quality in [50, 75, 90]:
+                    for quality in [90]:
                         generate(font_ref, font_str.replace('fonts/', ''), char_size, (char_size + SPACING) * 2, background, foreground, quality)
             end = time.time()
             print('Time taken:', end - start, 's')
@@ -116,3 +116,6 @@ def generate_all():
 initialize()
 create_missing_subdirectories()
 generate_all()
+
+feature_list = numpy.array(feature_list)
+numpy.savetxt("features.csv", feature_list, delimiter = ',')
