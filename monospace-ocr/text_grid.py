@@ -1,6 +1,4 @@
-import cv2
-import numpy, utils
-from constants import CHAR_HEIGHT
+import numpy
 
 # This algorithm takes an image with monospace text and creates a grid that aligns itself optimally
 # between symbol borders. It is rather insensitive to garbage data outside the monospace area, as
@@ -8,7 +6,7 @@ from constants import CHAR_HEIGHT
 # given below, so it's possible to tweak them within reasonable margins.
 
 # Accepted symbol widths.
-COL_SPLIT_RANGE = range(5, 20)
+COL_SPLIT_RANGE = range(5, 30)
 # Accepted difference (along all color channels) between 2 pixels for them to be considered 'similar'
 SIMILAR_THRESHOLD = 50
 
@@ -106,9 +104,14 @@ def draw_splits(image, vertical_splits, horizontal_splits, color):
     for split in vertical_splits:
         for i in range(image.shape[0]):
             image[i][split] = color
+            if split > 1:
+                image[i][split - 1] = color
     for split in horizontal_splits:
         for j in range(image.shape[1]):
             image[split][j] = color
+            if split > 1:
+                image[split - 1][j] = color
+    return image
 
 def parse_cells(image):
     image = image.astype('int')

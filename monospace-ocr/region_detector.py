@@ -13,9 +13,6 @@ def similar(image, row_l, row_r, col_l, col_r):
     sub_image = image[row_l:row_r, col_l:col_r]
     return len(sub_image[abs(sub_image - sub_image[0][0]) > SIMILARITY_DELTA]) == 0
 
-def intersects(a, b):
-    return utils.intersection_area(a, b) > 0
-
 def detect_regions(image):
     sharpening_kernel = numpy.array([
         [0, -1, 0],
@@ -46,13 +43,6 @@ def detect_regions(image):
             col_l, col_r = numpy.min(nonzero[1]), numpy.max(nonzero[1])
             sparsity = len(nonzero[0]) / ((row_r - row_l + 1) * (col_r - col_l + 1))
             if area > MINIMUM_AREA_PERCENT and sparsity > MINIMUM_SPARSITY_PERCENT:
-                has_seen = False
-                for box in boxes:
-                    if intersects((row_l, row_r, col_l, col_r), box):
-                        has_seen = True
-                        break
-                if not has_seen:
-                    boxes.append((row_l, row_r, col_l, col_r))
-                    image[mask == 1] = 255
-    cv2.imwrite('ll.jpg', image)
+                boxes.append((row_l, row_r, col_l, col_r))
+                image[mask == 1] = 255
     return boxes

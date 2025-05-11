@@ -114,12 +114,15 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
         orig = orig[:, 1:]
     lefteroo = False
 
+    light = False
     # Symbol must be white on black background
     if get_background_black_and_white(cell, is_binarized = False) == 255:
+        light = True
         cell = 255 - cell
 
     # Technical resize
     coefficient = 4
+    orig_inc = cv2.resize(orig, (orig.shape[1] * coefficient, orig.shape[0] * coefficient), interpolation = cv2.INTER_LANCZOS4)
     cell = cv2.resize(cell, (cell.shape[1] * coefficient, cell.shape[0] * coefficient), interpolation = cv2.INTER_LANCZOS4)
 
     min_color, max_color = numpy.min(cell), numpy.max(cell)
@@ -136,11 +139,10 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
 
     background = [0, 0, 0]
     cnt = 0
-    binarized_small = cv2.resize(binarized, (orig.shape[1], orig.shape[0]), interpolation = cv2.INTER_LANCZOS4)
-    for i in range(orig.shape[0]):
-        for j in range(orig.shape[1]):
-            if binarized_small[i][j] == 0:
-                background = background + orig[i][j]
+    for i in range(0, orig_inc.shape[0], 1):
+        for j in range(0, orig_inc.shape[1], 1):
+            if binarized[i][j] == 0:
+                background = background + orig_inc[i][j]
                 cnt = cnt + 1
     background = background / cnt
 
@@ -162,15 +164,17 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
                 mask = numpy.logical_or(mask, res)
     mask[:, (2 * coefficient):(cell.shape[1] - 2 * coefficient)] = 1
 
-    foreground = [0, 0, 0]
-    cnt = 0
-    binarized_small = cv2.resize(binarized, (orig.shape[1], orig.shape[0]), interpolation = cv2.INTER_LANCZOS4)
-    for i in range(orig.shape[0]):
-        for j in range(orig.shape[1]):
-            if binarized_small[i][j] != 0:
-                foreground = foreground + orig[i][j]
-                cnt = cnt + 1
-    foreground = foreground / cnt
+    foreground = [0, 0, 0] if not light else [255, 255, 255]
+    for i in range(0, orig_inc.shape[0], coefficient):
+        for j in range(0, orig_inc.shape[1], coefficient):
+            if binarized[i][j] != 0 and not light:
+                foreground[0] = max(foreground[0], orig_inc[i][j][0])
+                foreground[1] = max(foreground[1], orig_inc[i][j][1])
+                foreground[2] = max(foreground[2], orig_inc[i][j][2])
+            if binarized[i][j] != 0 and light:
+                foreground[0] = min(foreground[0], orig_inc[i][j][0])
+                foreground[1] = min(foreground[1], orig_inc[i][j][1])
+                foreground[2] = min(foreground[2], orig_inc[i][j][2])
 
     cell = cell * mask
     binarized = binarized * mask

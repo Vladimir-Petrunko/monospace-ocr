@@ -1,19 +1,13 @@
 import os.path
 
-from keras.src.callbacks import EarlyStopping
 
-import ocr_model
-import tensorflow
 import cv2
-
-from sklearn.neighbors import KNeighborsClassifier
-from numpy import genfromtxt
+import ocr_model
+from keras.src.callbacks import EarlyStopping
 from tensorflow.keras import layers, models
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from ocr_model import *
 from pathlib import Path
-from sklearn.model_selection import train_test_split
-from constants import *
 
 DATASET_PARTITIONS = 10
 
@@ -26,32 +20,17 @@ def early_callback():
         restore_best_weights = True
     )
 
-def print_components(markers, components):
-    component_cnt = len(components)
-    for i in range(component_cnt):
-        print('markers:', markers[i], 'component:', components[i])
-
 def print_prediction_errors(cnt, predictions_errors):
     print('Prediction errors:')
     for i in range(cnt):
         print(i, predictions_errors[i])
 
-def trim(errors, counts):
-    new_errors = []
-    for i in range(len(errors)):
-        res = {}
-        for ch in errors[i]:
-            error_cnt = errors[i][ch]
-            if error_cnt / counts[ch] >= 0.01:
-                res[ch] = errors[i][ch]
-        new_errors.append(res)
-    return new_errors
-
 def create_cnn_model(classes):
     model = models.Sequential()
     model.add(layers.Input(shape = (12, 12, 1)))
     model.add(layers.Conv2D(64, (3, 3), activation = 'relu'))
-    model.add(layers.Conv2D(256, (3, 3), activation = 'relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(128, (3, 3), activation = 'relu'))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Flatten())
     model.add(layers.Dense(classes))

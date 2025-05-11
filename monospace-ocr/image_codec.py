@@ -1,5 +1,4 @@
 import os.path
-
 import numpy
 from dahuffman import HuffmanCodec
 from PIL import Image, ImageDraw, ImageFont
@@ -11,9 +10,9 @@ class Region:
             coordinates, # Tuple of x- and y- coordinates of top-left corner
             split_size, # Tuple of horizontal and vertical sizes of splits
             splits, # Tuple of horizontal and vertical splits
-            symbols, # 2D array of symbols
-            foregrounds, # 2D array of foreground colors
-            backgrounds, # 2D array of background colors
+            symbols, # Array of symbols
+            foregrounds, # Array of foreground colors
+            backgrounds, # Array of background colors
     ):
         self.font = font
         self.coordinates = coordinates
@@ -27,10 +26,21 @@ def arr_8_to_int(arr):
     """
     Converts array of 8 binary values to its corresponding numeric value.
     E.g. [0, 1, 1, 1, 0, 0, 0, 0] converts to 14.
+    This does the opposite of int_to_arr_8.
     :param arr: the input array
     :return: the corresponding numeric value.
     """
     return sum(int(x) << i for i, x in enumerate(arr))
+
+def int_to_arr_8(x):
+    """
+    Converts number to its 8-bit representation.
+    E.g. 14 converts to [0, 1, 1, 1, 0, 0, 0, 0].
+    This does the opposite of arr_8_to_int.
+    :param x: the input number
+    :return: the corresponding byte array.
+    """
+    return [1 if x & (1 << i) else 0 for i in range(8)]
 
 def arr_to_ints(arr):
     """
@@ -44,6 +54,11 @@ def arr_to_ints(arr):
     return result
 
 def combine_bytes(arr):
+    """
+    Combines several byte values into one int value by treating the bytes as base-255 digits.
+    :param arr: an array of individual byte values
+    :return: the result int value
+    """
     result = 0
     for x in arr:
         result = result * 256
@@ -63,6 +78,12 @@ def find_font(font):
     return None
 
 def is_similar_color(a, b):
+    """
+    Determines whether two input colors are similar across all color channels
+    :param a: the first input color
+    :param b: the second input color
+    :return: True if the two colors are similar, False otherwise
+    """
     for i in range(3):
         if max(a[i], b[i]) - min(a[i], b[i]) > 10:
             return False
@@ -75,14 +96,14 @@ def generate_region(region, image):
     :param image: the input image
     :return: the image with the input region drawn.
     """
+    dx = region.coordinates[0]
+    dy = region.coordinates[1]
     draw = ImageDraw.Draw(image)
     index = 0
     row_splits = region.splits[1]
     col_splits = region.splits[0]
     font_str = find_font(region.font)
     font_ref = ImageFont.truetype(font_str, region.split_size[0] * 2 - 2)
-    width = region.split_size[0]
-    height = region.split_size[1]
     len_w = len(row_splits) - 1
     len_h = len(col_splits) - 1
     color_mapping = {}
@@ -104,16 +125,20 @@ def generate_region(region, image):
                     break
             if not found:
                 color_mapping[tuple(region.foregrounds[index])] = tuple(region.foregrounds[index])
-            if region.symbols[index] == 'Y':
-                region.symbols[index] = 'y'
-            draw.rectangle(xy = (i * width, j * height, (i + 1) * width, (j + 1) * height), fill = color_mapping[tuple(region.backgrounds[index])])
-            draw.text(xy = (i * width, j * height), text = region.symbols[index], fill = color_mapping[tuple(region.foregrounds[index])], font = font_ref)
+            draw.rectangle(xy = (dx + region.splits[0][i], dy + region.splits[1][j], dx + region.splits[0][i + 1], dy + region.splits[1][j + 1]), fill = color_mapping[tuple(region.backgrounds[index])][::-1])
+            draw.text(xy = (dx + region.splits[0][i], dy + region.splits[1][j]), text = chr(region.symbols[index]), fill = color_mapping[tuple(region.foregrounds[index])][::-1], font = font_ref)
 
             index = index + 1
 
     return image
 
-def encode(regions):
+def encode(image, regions):
+    """
+    Performs encoding of specified image regions.
+    :param image: the original image
+    :param regions: the text regions, represented by the Region DTO
+    :return: the encoded image as a bytes array
+    """
     symbol_frequencies = {}
     color_frequencies = {}
     color_conversion = {}
@@ -137,6 +162,9 @@ def encode(regions):
 
     data = numpy.array([], dtype = 'uint8')
 
+    data = numpy.append(data, list(image.shape[0].to_bytes(2)))
+    data = numpy.append(data, list(image.shape[1].to_bytes(2)))
+
     # Frequency data
     data = numpy.append(data, list(len(symbol_frequencies).to_bytes(1)))
     for symbol in symbol_frequencies:
@@ -157,12 +185,11 @@ def encode(regions):
         data = numpy.append(data, list(len(font_bytes).to_bytes(1)))
         data = numpy.append(data, list(font_bytes))
         # Coordinates
-        data = numpy.append(data, list(region.coordinates[0].to_bytes(2)))
-        data = numpy.append(data, list(region.coordinates[1].to_bytes(2)))
+        data = numpy.append(data, list(int(region.coordinates[0]).to_bytes(2)))
+        data = numpy.append(data, list(int(region.coordinates[1]).to_bytes(2)))
         for axis in range(2):
             # Split sizes
             data = numpy.append(data, list(int(region.split_size[axis]).to_bytes(2)))
-            data = numpy.append(data, list(int(region.splits[axis][0]).to_bytes(2)))
             # Split coordinates (delta compared to the expected step size)
             splits = numpy.array([])
             for i in range(1, len(region.splits[axis])):
@@ -172,10 +199,11 @@ def encode(regions):
                 else:
                     splits = numpy.append(splits, [1])
             splits_bytes = arr_to_ints(splits)
-            data = numpy.append(data, list(len(splits_bytes).to_bytes(2)))
+            data = numpy.append(data, list(len(splits).to_bytes(2)))
             data = numpy.append(data, splits_bytes)
         # Symbols
         symbols_bytes = list(symbol_huffman.encode(region.symbols))
+        data = numpy.append(data, list(len(symbols_bytes).to_bytes(4)))
         data = numpy.append(data, symbols_bytes)
         # Colors
         res = []
@@ -186,17 +214,29 @@ def encode(regions):
             else:
                 res.append(color_conversion[col])
         color_data = color_huffman.encode(res)
+        data = numpy.append(data, list(len(color_data).to_bytes(4)))
         data = numpy.append(data, list(color_data))
 
     return bytes(list(data))
 
 def decode(data, output_file):
+    """
+    Performs decoding of byte encoded data and generation of output image.
+    :param data: the byte encoded data
+    :param output_file: the file where the generated image is to be saved.
+    """
     symbol_frequencies = {}
     color_frequencies = {}
+    index = 0
 
+    # Image size
+    image_width = combine_bytes(data[index:(index + 2)])
+    image_height = combine_bytes(data[(index + 2):(index + 4)])
+
+    index = index + 4
     # Frequency data
-    index = 1
-    symbols_cnt = data[0]
+    symbols_cnt = data[index]
+    index = index + 1
     # Symbol frequencies
     for i in range(symbols_cnt):
         symbol = data[index]
@@ -218,6 +258,9 @@ def decode(data, output_file):
     regions_cnt = data[index]
     index = index + 1
 
+    image = numpy.zeros((image_width, image_height, 3), dtype = 'uint8')
+    image = Image.fromarray(image.astype('uint8'), 'RGB')
+
     for i in range(regions_cnt):
         length = data[index]
         font_bytes = data[(index + 1):(index + length + 1)]
@@ -226,6 +269,45 @@ def decode(data, output_file):
         index = index + length + 1
         coordinate_x = combine_bytes(data[index:(index + 2)])
         coordinate_y = combine_bytes(data[(index + 2):(index + 4)])
-        print(coordinate_x, coordinate_y)
 
+        index = index + 4
+        split_sizes = [None, None]
+        splits = [[0], [0]]
+        for axis in range(2):
+            split_sizes[axis] = combine_bytes(data[index:(index + 2)])
+            splits_len = combine_bytes(data[(index + 2):(index + 4)])
+            index = index + 4
+            ar = []
+            aux = 0
+            for k in range(splits_len):
+                if aux == 0:
+                    ar = int_to_arr_8(data[index])
+                    index = index + 1
+                splits[axis].append(splits[axis][-1] - ar[aux] + split_sizes[axis])
+                aux = (aux + 1) % 8
 
+        symbols_bytes_len = combine_bytes(data[index:(index + 4)])
+        index = index + 4
+        symbols_encoded = data[index:(index + symbols_bytes_len)]
+        index = index + symbols_bytes_len
+        symbols_decoded = symbol_huffman.decode(symbols_encoded)
+
+        colors_bytes_len = combine_bytes(data[index:(index + 4)])
+        index = index + 4
+        colors_encoded = data[index:(index + colors_bytes_len)]
+        index = index + colors_bytes_len
+        colors_decoded = color_huffman.decode(colors_encoded)
+
+        half = len(colors_decoded) // 2
+
+        generate_region(Region(
+            font = font_str,
+            coordinates = (coordinate_x, coordinate_y),
+            split_size = split_sizes,
+            splits = splits,
+            symbols = symbols_decoded,
+            backgrounds = colors_decoded[:half],
+            foregrounds = colors_decoded[half:]
+        ), image)
+
+    image.save(output_file)

@@ -1,4 +1,3 @@
-from constants import CHAR_HEIGHT
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import cv2, numpy, os, time, utils, ocr_model
