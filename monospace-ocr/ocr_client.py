@@ -85,7 +85,7 @@ def encode(input_file, font, output_file):
         foregrounds = list(map(lambda cell: cell[1].foreground, cells_data)),
         backgrounds = list(map(lambda cell: cell[1].background, cells_data))
     )
-    encoded = image_codec.encode(image, [region])
+    encoded = image_codec.encode(cv2_image, [region])
     with open(output_file, 'wb') as file:
         file.write(encoded)
 

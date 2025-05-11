@@ -15,7 +15,7 @@ Requirements are detailed in `requirements.txt`.
 without surrounding quotes.
 * `<output>` is the relative path of the file where the answer is to be written. If the file exists, it will be overwritten with the parsed text, otherwise it will be created. _If the parameter is not specified, the parsed text will be written to standard output._
 
-Example usage: `python ocr.py mode=ocr input=example/image.jpg output=example/result.txt`
+Example usage: `python ocr.py mode=ocr input=../examples/terminal.jpg output=../examples/terminal.txt`
 
 ### Image encoding
 `python ocr.py mode=encode input=<input> output=<output> detail={all|text}`, where:
@@ -26,16 +26,16 @@ Example usage: `python ocr.py mode=ocr input=example/image.jpg output=example/re
   * `text` — only the text area will be encoded. This results in hyper-compression rates up to 2% and lower in best-case scenarios, and around 5% in worst-case scenarios.
   The default value is `text`.
 
-Example usage: `python ocr.py mode=encode input=example/image.jpg output=example/image.eva`
+Example usage: `python ocr.py mode=encode input=../examples/terminal.jpg output=../examples/terminal.eva`
 
 ### Image decoding
 `python ocr.py mode=decode input=<input> output=<output>`, where:
 * `<input>` is the relative path of the _encoded data_,
 * `<output>` is the relative path of the image which will contain the decoded data. If the file exists, it will be overwritten with the decoded image, otherwise it will be created.
 
-Example usage: `python ocr.py mode=decode input=example/image.eva output=example/image.jpg`
+Example usage: `python ocr.py mode=decode input=../examples/terminal.eva output=../examples/terminal.jpg`
 
-These methods may also be called directly from Python code. All usage examples are available in `main.py`.
+These methods may also be called directly from Python code.
 
 ## Examples
 Several playground examples are available in the `examples/` directory.

@@ -1,4 +1,5 @@
 import ocr_client
+import os
 import sys
 
 DEFAULT_FONT = 'Consolas'
@@ -19,11 +20,16 @@ def parse_param(param_name, args, required, default = None):
             return arg[(len(param_name) + 1):]
     if not required:
         return default
-    raise Exception('Error: expected parameter: ', param_name, '.')
+    raise Exception('Error: expected parameter: ' + param_name + '.')
+
+def check_exists(path):
+    if not os.path.exists(path):
+        raise Exception('File at path ' + path + ' not found!')
 
 mode = parse_mode(sys.argv)
 if mode == 'ocr':
     input_file = parse_param('input', sys.argv, required = True)
+    check_exists(input_file)
     output_file = parse_param('output', sys.argv, required = False)
     ocr_result = ocr_client.image_to_text(input_file)
     if output_file is None:
@@ -33,11 +39,13 @@ if mode == 'ocr':
             file.write(ocr_result)
 elif mode == 'encode':
     input_file = parse_param('input', sys.argv, required = True)
+    check_exists(input_file)
     output_file = parse_param('output', sys.argv, required = True)
     font = parse_param('font', sys.argv, required = False, default = DEFAULT_FONT)
     detail = parse_param('detail', sys.argv, required = False, default = 'none')
     ocr_client.encode(input_file, font, output_file)
 else: # mode == 'decode'
     input_file = parse_param('input', sys.argv, required = True)
+    check_exists(input_file)
     output_file = parse_param('output', sys.argv, required = True)
     ocr_client.decode(input_file, output_file)
