@@ -121,7 +121,7 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
         cell = 255 - cell
 
     # Technical resize
-    coefficient = 4
+    coefficient = 2
     orig_inc = cv2.resize(orig, (orig.shape[1] * coefficient, orig.shape[0] * coefficient), interpolation = cv2.INTER_LANCZOS4)
     cell = cv2.resize(cell, (cell.shape[1] * coefficient, cell.shape[0] * coefficient), interpolation = cv2.INTER_LANCZOS4)
 
@@ -139,8 +139,8 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
 
     background = [0, 0, 0]
     cnt = 0
-    for i in range(0, orig_inc.shape[0], 1):
-        for j in range(0, orig_inc.shape[1], 1):
+    for i in range(0, orig_inc.shape[0], coefficient * 2):
+        for j in range(0, orig_inc.shape[1], coefficient * 2):
             if binarized[i][j] == 0:
                 background = background + orig_inc[i][j]
                 cnt = cnt + 1
@@ -157,7 +157,7 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
 
     # Clear unconnected parts of edge columns
     mask = numpy.zeros(cell.shape)
-    for i in range(0, cell.shape[0]):
+    for i in range(0, cell.shape[0], 2):
         for j in range(2 * coefficient, cell.shape[1] - 2 * coefficient):
             if binarized[i][j] == 255 and mask[i][j] == 0:
                 res = flood(binarized, (i, j))
@@ -165,8 +165,8 @@ def normalize(cell, is_grayscale, for_model, target_size = 12):
     mask[:, (2 * coefficient):(cell.shape[1] - 2 * coefficient)] = 1
 
     foreground = [0, 0, 0] if not light else [255, 255, 255]
-    for i in range(0, orig_inc.shape[0], coefficient):
-        for j in range(0, orig_inc.shape[1], coefficient):
+    for i in range(0, orig_inc.shape[0], coefficient * 2):
+        for j in range(0, orig_inc.shape[1], coefficient * 2):
             if binarized[i][j] != 0 and not light:
                 foreground[0] = max(foreground[0], orig_inc[i][j][0])
                 foreground[1] = max(foreground[1], orig_inc[i][j][1])

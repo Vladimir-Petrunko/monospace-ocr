@@ -1,6 +1,4 @@
 import os.path
-
-
 import cv2
 import ocr_model
 from keras.src.callbacks import EarlyStopping

@@ -1,3 +1,5 @@
+import time
+
 import cv2
 import image_codec
 import numpy
@@ -64,16 +66,19 @@ def image_to_text(image):
     _, _, _, result = parse(cv2.imread(image))
     return '\n'.join(''.join(str(x) for x in row) for row in result)
 
-def encode(input_file, font, output_file):
+def encode_aux(image, parsed_data, font, output_file, keep_background):
     """
     Encodes the input image with the given parameters.
-    :param input_file: the path to the input image.
+    This is an auxiliary method and is not meant to be called from outside.
+    :param image: the input image as a NumPy ndarray.
+    :param parsed_data: the result of calling the 'parse' method, as follows:
+        (vertical_size, horizontal_size), (vertical_splits, horizontal_splits), cells_data, result
     :param font: the font with which the image is to be encoded.
     :param output_file: the path of the encoded file to be created. If it exists, contents will be overwritten.
+    :param keep_background: whether the image outside the text regions is to be kept.
     """
-    cv2_image = cv2.imread(input_file)
-    (vertical_size, horizontal_size), (vertical_splits, horizontal_splits), cells_data, result = parse(cv2_image)
-    coordinates = (vertical_splits[0], horizontal_splits[0])
+    (vertical_size, horizontal_size), (vertical_splits, horizontal_splits), cells_data, result = parsed_data
+    coordinates = (vertical_splits[0], horizontal_splits[0], vertical_splits[-1], horizontal_splits[-1])
     vertical_splits = vertical_splits - coordinates[0]
     horizontal_splits = horizontal_splits - coordinates[1]
     region = image_codec.Region(
@@ -85,9 +90,20 @@ def encode(input_file, font, output_file):
         foregrounds = list(map(lambda cell: cell[1].foreground, cells_data)),
         backgrounds = list(map(lambda cell: cell[1].background, cells_data))
     )
-    encoded = image_codec.encode(cv2_image, [region])
+    encoded = image_codec.encode(image, [region], keep_background)
     with open(output_file, 'wb') as file:
         file.write(encoded)
+
+def encode(input_file, font, output_file, keep_background = False):
+    """
+    Encodes the input image with the given parameters.
+    :param input_file: the path to the input image.
+    :param font: the font with which the image is to be encoded.
+    :param output_file: the path of the encoded file to be created. If it exists, contents will be overwritten.
+    :param keep_background: whether the image outside the text regions is to be kept.
+    """
+    cv2_image = cv2.imread(input_file)
+    encode_aux(cv2_image, parse(cv2_image), font, output_file, keep_background)
 
 def decode(input_file, output_file):
     """

@@ -85,7 +85,7 @@ def is_similar_color(a, b):
     :return: True if the two colors are similar, False otherwise
     """
     for i in range(3):
-        if max(a[i], b[i]) - min(a[i], b[i]) > 10:
+        if max(a[i], b[i]) - min(a[i], b[i]) > 15:
             return False
     return True
 
@@ -132,16 +132,23 @@ def generate_region(region, image):
 
     return image
 
-def encode(image, regions):
+def encode(image, regions, keep_background):
     """
     Performs encoding of specified image regions.
     :param image: the original image
     :param regions: the text regions, represented by the Region DTO
+    :param keep_background: whether the image outside the text regions is to be kept.
     :return: the encoded image as a bytes array
     """
     symbol_frequencies = {}
     color_frequencies = {}
     color_conversion = {}
+
+    image = image.astype('int')
+    for region in regions:
+        row_l, row_r = region.coordinates[0], region.coordinates[2]
+        col_l, col_r = region.coordinates[1], region.coordinates[3]
+        image[row_l:(row_r + 1)][col_l:(col_r + 1)] = [-1, -1, -1]
 
     for region in regions:
         for symbol in region.symbols:
@@ -216,6 +223,25 @@ def encode(image, regions):
         color_data = color_huffman.encode(res)
         data = numpy.append(data, list(len(color_data).to_bytes(4)))
         data = numpy.append(data, list(color_data))
+
+    other_colors = [[], []]
+
+    if keep_background:
+        for row in range(image.shape[0]):
+            for col in range(image.shape[1]):
+                if image[row][col][0] == -1:
+                    continue
+                other_colors[0].append((row, col))
+                other_colors[1].append(image[row][col])
+
+    for i in range(len(other_colors[0])):
+        # Coordinates
+        data = numpy.append(data, list(int(other_colors[0][i][0]).to_bytes(2)))
+        data = numpy.append(data, list(int(other_colors[0][i][1]).to_bytes(2)))
+        # Color
+        data = numpy.append(data, list(int(other_colors[1][i][0]).to_bytes(1)))
+        data = numpy.append(data, list(int(other_colors[1][i][1]).to_bytes(1)))
+        data = numpy.append(data, list(int(other_colors[1][i][2]).to_bytes(1)))
 
     return bytes(list(data))
 
